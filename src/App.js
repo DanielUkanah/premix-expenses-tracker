@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { Truck, Waves, ChevronLeft, ChevronRight, Plus, Trash2, Download, FileText, ArrowLeft, Loader2, FileBarChart, X, CheckSquare, Square } from "lucide-react";
-import { db } from "./firebase";
+import { Truck, Waves, ChevronLeft, ChevronRight, Plus, Trash2, Download, FileText, ArrowLeft, Loader2, FileBarChart, X, CheckSquare, Square, LogOut, Lock } from "lucide-react";
+import { db, auth } from "./firebase";
 import { doc, getDoc, setDoc } from "firebase/firestore";
+import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 
 // ---------- Brand tokens ----------
 const MAGENTA = "#C4237F";
@@ -65,6 +66,31 @@ function useJsPDF() {
 
 export default function App() {
   const [vehicleId, setVehicleId] = useState(null);
+  const [user, setUser] = useState(null);
+  const [authChecking, setAuthChecking] = useState(true);
+
+  // Check if a user is logged in
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthChecking(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  if (authChecking) {
+    return (
+      <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: LAVENDER, color: PURPLE }}>
+        <Loader2 size={32} style={{ animation: "spin 1s linear infinite" }} />
+      </div>
+    );
+  }
+
+  // If no user is logged in, show the login screen
+  if (!user) {
+    return <LoginScreen />;
+  }
+
   return (
     <>
       <style>{`
@@ -88,16 +114,79 @@ export default function App() {
   );
 }
 
+// ==================== LOGIN SCREEN ====================
+function LoginScreen() {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+    try {
+      // Secretly append the domain so Firebase thinks it's an email
+      const formattedEmail = `${username.trim().toLowerCase()}@premix.com`;
+      await signInWithEmailAndPassword(auth, formattedEmail, password);
+    } catch (err) {
+      setError("Invalid username or password. Access denied.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: LAVENDER, fontFamily: "Inter, sans-serif", padding: 20 }}>
+      <div style={{ background: "#fff", padding: "40px 30px", borderRadius: 16, width: "100%", maxWidth: 400, boxShadow: "0 10px 25px rgba(58,36,114,0.08)", border: `1px solid ${LINE}` }}>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 20, color: MAGENTA }}>
+          <Lock size={48} />
+        </div>
+        <h1 style={{ fontFamily: "Poppins, sans-serif", fontWeight: 700, fontSize: 22, color: PURPLE_DARK, textAlign: "center", marginBottom: 8 }}>Premix Secure Portal</h1>
+        <p style={{ fontSize: 13, color: "#8B7FA8", textAlign: "center", marginBottom: 24 }}>Enter your username and password to access the fleet tracker.</p>
+        
+        {error && <div style={{ background: "#FDF0F7", color: MAGENTA_DARK, padding: "10px 14px", borderRadius: 8, fontSize: 13, marginBottom: 16, fontWeight: 500, textAlign: "center", border: `1px solid ${MAGENTA}` }}>{error}</div>}
+        
+        <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: PURPLE, marginBottom: 6 }}>Username</div>
+            <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} required style={{ width: "100%", padding: "12px", borderRadius: 8, border: `1px solid ${LINE}`, fontSize: 14, outline: "none", boxSizing: "border-box" }} placeholder="e.g. admin" />
+          </div>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: PURPLE, marginBottom: 6 }}>Password</div>
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required style={{ width: "100%", padding: "12px", borderRadius: 8, border: `1px solid ${LINE}`, fontSize: 14, outline: "none", boxSizing: "border-box" }} placeholder="••••••••" />
+          </div>
+          <button type="submit" disabled={loading} style={{ width: "100%", background: `linear-gradient(120deg, ${MAGENTA} 0%, ${PURPLE} 100%)`, color: "#fff", border: "none", borderRadius: 8, padding: "14px", fontSize: 14, fontWeight: 600, cursor: "pointer", display: "flex", justifyContent: "center", alignItems: "center", gap: 8, marginTop: 8 }}>
+            {loading ? <Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} /> : "Sign In"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ==================== FLEET SELECTION ====================
 function FleetSelect({ onSelect }) {
   const mixers = VEHICLES.filter((v) => v.type === "mixer");
   const pumps = VEHICLES.filter((v) => v.type === "pump");
   const [exportOpen, setExportOpen] = useState(false);
 
+  const handleLogout = () => {
+    signOut(auth);
+  };
+
   return (
     <div style={{ minHeight: "100vh", background: LAVENDER, fontFamily: "Inter, sans-serif", padding: "0 0 48px" }}>
       <div style={{ background: `linear-gradient(120deg, ${PURPLE_DARK} 0%, ${PURPLE} 55%, ${MAGENTA_DARK} 100%)`, padding: "36px 24px 44px", color: "#fff" }}>
         <div style={{ maxWidth: 880, margin: "0 auto" }}>
+          
+          {/* Dashboard Header with Logout */}
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+            <button onClick={handleLogout} style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "none", color: "#E7D3EC", fontSize: 12, fontWeight: 600, cursor: "pointer", opacity: 0.8 }}>
+              <LogOut size={14} /> Sign Out
+            </button>
+          </div>
+
           <div className="responsive-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
             <h1 style={{ fontFamily: "Poppins, sans-serif", fontWeight: 700, fontSize: 28, margin: 0, letterSpacing: 0.2 }}>
               Premix Expense Tracker
@@ -420,7 +509,7 @@ function VehicleTracker({ vehicleId, onBack }) {
         }
       } catch (error) {
         console.error("Error fetching data:", error);
-        alert("Failed to load from database: " + error.message);
+        alert("Failed to load from database. Are you logged in?");
         setEntries([]);
       } finally {
         setLoading(false);
@@ -438,7 +527,7 @@ function VehicleTracker({ vehicleId, onBack }) {
       await setDoc(docRef, { entries: next }, { merge: true });
     } catch (error) {
       console.error("Error saving data:", error);
-      alert("Failed to save to database! " + error.message);
+      alert("Failed to save to database! Check your internet connection.");
     } finally {
       setTimeout(() => setSaving(false), 300);
     }
